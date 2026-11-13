@@ -23,7 +23,6 @@
 <body>
 
 <div id="game-container">
-    <!-- PANEL LATERAL -->
     <div id="sidebar">
         <div>
           <h2>MU TITANES</h2>
@@ -65,13 +64,11 @@
         </div>
     </div>
 
-    <!-- ZONA DE JUEGO -->
     <div id="viewport">
         <canvas id="renderCanvas"></canvas>
     </div>
 </div>
 
-<!-- PANEL DE ADMINISTRADOR EXCLUSIVO (GM) -->
 <div id="gm-panel">
     <h3 style="color:#ff4444; margin-top:0;">🛡️ PANEL GM: MU TITANES</h3>
     <div style="font-size:12px; margin-bottom:8px; color:#ffaaaa;">Modo Administrador Activo</div>
@@ -90,7 +87,6 @@
     <button onclick="gmSpawnItem()" style="background:#800; width:100%; margin-top:8px;">🎁 Crear Alas Evo 3 / Set S4</button>
 </div>
 
-<!-- MODAL CREAR PJ -->
 <div id="create-modal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#1a1a1a; border:2px solid #d4af37; padding:20px; z-index:100; border-radius:8px; text-align:center;">
     <h3>Crear Nuevo Personaje</h3>
     <input type="text" id="new-char-name" placeholder="Nombre del Héroe">
@@ -100,5 +96,217 @@
         <option value="High Elf">High Elf (Fairy Elf)</option>
         <option value="Duel Master">Duel Master (Magic Gladiator)</option>
         <option value="Lord Emperor">Lord Emperor (Dark Lord)</option>
-        <option value="Dimension Master">Dimension Master (
+        <option value="Dimension Master">Dimension Master (Summoner)</option>
+    </select>
+    <br><br>
+    <button onclick="createCharacter()">Crear</button>
+    <button onclick="closeCreateCharModal()" style="background:#511;">Cancelar</button>
+</div>
+
+<div id="map-modal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#1a1a1a; border:2px solid #d4af37; padding:20px; z-index:100; border-radius:8px; text-align:center;">
+    <h3>Seleccionar Mapa (Season 4)</h3>
+    <button onclick="changeMap('Lorencia')" style="width:100%;">Lorencia</button>
+    <button onclick="changeMap('Swamp of Calmness')" style="width:100%;">Swamp of Calmness</button>
+    <button onclick="changeMap('Raklion Hatchery')" style="width:100%;">Raklion Hatchery - Selupan</button>
+    <br><br>
+    <button onclick="closeMapModal()" style="background:#511;">Cerrar</button>
+</div>
+
+<script>
+    const canvas = document.getElementById('renderCanvas');
+    const ctx = canvas.getContext('2d');
+    function resizeCanvas() { canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    let currentUser = null;
+    let currentMap = 'Lorencia';
+    let player = null;
+    let characters = [];
+    let monsters = [];
+    let keys = {};
+
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    function addChat(sender, text, color="#fff") {
+        const box = document.getElementById('chat-box');
+        box.innerHTML += `<div class="chat-msg" style="color:${color};">[${sender}] ${text}</div>`;
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function loginAccount() {
+        const u = document.getElementById('username').value.trim();
+        if(!u) { alert('Ingresa un usuario'); return; }
+        currentUser = u;
+        let savedChars = localStorage.getItem('mu_titanes_chars_' + currentUser);
+        characters = savedChars ? JSON.parse(savedChars) : [];
         
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('char-select-section').style.display = 'block';
+        updateCharList();
+
+        if(currentUser.toLowerCase() === 'nahu') {
+            document.getElementById('gm-panel').style.display = 'block';
+            addChat("GM System", "Privilegios de Administrador activados en Mu Titanes.", "#ff4444");
+        } else {
+            document.getElementById('gm-panel').style.display = 'none';
+        }
+
+        addChat("Mu Titanes", `Bienvenido a la batalla, ${currentUser}.`, "#00ffcc");
+    }
+
+    function updateCharList() {
+        const sel = document.getElementById('char-list');
+        sel.innerHTML = '';
+        characters.forEach((c, idx) => {
+            sel.innerHTML += `<option value="${idx}">${c.name} (${c.className} - Lv ${c.level})</option>`;
+        });
+    }
+
+    function openCreateCharModal() { document.getElementById('create-modal').style.display = 'block'; }
+    function closeCreateCharModal() { document.getElementById('create-modal').style.display = 'none'; }
+
+    function createCharacter() {
+        const name = document.getElementById('new-char-name').value.trim();
+        const className = document.getElementById('new-char-class').value;
+        if(!name) { alert('Escribe un nombre'); return; }
+
+        const newChar = {
+            name, className, level: 1, reset: 0, zen: 50000,
+            hp: 150, maxHp: 150, sd: 80, maxSd: 80,
+            x: canvas.width / 2, y: canvas.height / 2
+        };
+        characters.push(newChar);
+        localStorage.setItem('mu_titanes_chars_' + currentUser, JSON.stringify(characters));
+        closeCreateCharModal();
+        updateCharList();
+    }
+
+    function selectCharacter() {
+        const idx = document.getElementById('char-list').value;
+        if(idx === '' || !characters[idx]) { alert('Selecciona un personaje'); return; }
+        player = characters[idx];
+        document.getElementById('char-select-section').style.display = 'none';
+        document.getElementById('game-hud').style.display = 'block';
+        document.getElementById('gm-target-user').value = currentUser;
+        updateHUD();
+        spawnMonsters();
+    }
+
+    function updateHUD() {
+        if(!player) return;
+        document.getElementById('hud-name').innerText = player.name;
+        document.getElementById('hud-class').innerText = player.className;
+        document.getElementById('hud-lvl').innerText = player.level;
+        document.getElementById('hud-reset').innerText = player.reset;
+        document.getElementById('hud-zen').innerText = player.zen;
+        document.getElementById('hud-hp').innerText = `${Math.floor(player.hp)}/${player.maxHp}`;
+    }
+
+    function doReset() {
+        if(!player || player.level < 50) { alert('Necesitas nivel 50 para hacer Reset.'); return; }
+        player.level = 1;
+        player.reset++;
+        updateHUD();
+        saveGame();
+        addChat("Mu Titanes", `¡${player.name} ha completado su Reset #${player.reset}!`, "#ffd700");
+    }
+
+    function saveGame() {
+        if(!currentUser || !player) return;
+        localStorage.setItem('mu_titanes_chars_' + currentUser, JSON.stringify(characters));
+    }
+
+    function gmEditLevel() {
+        if(currentUser.toLowerCase() !== 'nahu') return;
+        let newLvl = parseInt(document.getElementById('gm-set-lvl').value) || 1;
+        if(player) {
+            player.level = newLvl;
+            updateHUD();
+            saveGame();
+            addChat("GM Panel", `Nivel ajustado a ${newLvl} para ${player.name}.`, "#ff4444");
+        }
+    }
+
+    function gmEditZen() {
+        if(currentUser.toLowerCase() !== 'nahu') return;
+        let newZen = parseInt(document.getElementById('gm-set-zen').value) || 999999999;
+        if(player) {
+            player.zen = newZen;
+            updateHUD();
+            saveGame();
+            addChat("GM Panel", `Zen actualizado a ${newZen}.`, "#ff4444");
+        }
+    }
+
+    function gmSpawnItem() {
+        if(currentUser.toLowerCase() !== 'nahu') return;
+        addChat("GM Panel", "✨ ¡Has equipado Alas Evo 3 y Set Socket en tu inventario!", "#ffd700");
+    }
+
+    function openMapModal() { document.getElementById('map-modal').style.display = 'block'; }
+    function closeMapModal() { document.getElementById('map-modal').style.display = 'none'; }
+    function changeMap(m) { currentMap = m; closeMapModal(); spawnMonsters(); }
+
+    function spawnMonsters() {
+        monsters = [];
+        for(let i=0; i<5; i++) {
+            monsters.push({
+                name: currentMap === 'Lorencia' ? 'Budge Dragon' : 'Selupan',
+                x: Math.random() * (canvas.width - 200) + 100,
+                y: Math.random() * (canvas.height - 200) + 100,
+                hp: 100, maxHp: 100, radius: 20, color: '#ff4444'
+            });
+        }
+    }
+
+    function gameLoop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = 'rgba(212, 175, 55, 0.05)';
+        for(let x=0; x<canvas.width; x+=50) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+        for(let y=0; y<canvas.height; y+=50) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`[ ${currentMap.toUpperCase()} ]`, canvas.width / 2, 40);
+
+        if(player) {
+            let speed = 4;
+            if(keys['w'] || keys['arrowup']) player.y -= speed;
+            if(keys['s'] || keys['arrowdown']) player.y += speed;
+            if(keys['a'] || keys['arrowleft']) player.x -= speed;
+            if(keys['d'] || keys['arrowright']) player.x += speed;
+
+            ctx.fillStyle = '#d4af37';
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y);
+            ctx.lineTo(player.x - 25, player.y - 20);
+            ctx.lineTo(player.x + 25, player.y - 20);
+            ctx.fill();
+
+            ctx.fillStyle = '#3498db';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, 14, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px sans-serif';
+            ctx.fillText(`${player.name} [GM / Lv.${player.level}]`, player.x, player.y - 22);
+
+            monsters.forEach(m => {
+                ctx.fillStyle = m.color;
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, m.radius, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#ffcccc';
+                ctx.fillText(m.name, m.x, m.y - m.radius - 15);
+            });
+        }
+        requestAnimationFrame(gameLoop);
+    }
+    requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
