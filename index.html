@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Mu Titanes - Season 4 Server</title>
+    <style>
+        body { margin: 0; background: #050505; color: #d4af37; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; user-select: none; }
+        #game-container { display: flex; width: 100vw; height: 100vh; }
+        #sidebar { width: 320px; background: #111; border-right: 2px solid #333; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 5px 0 15px rgba(0,0,0,0.8); z-index: 10; }
+        #viewport { flex-grow: 1; position: relative; background: radial-gradient(circle, #151a24 0%, #080a0f 100%); overflow: hidden; cursor: crosshair; }
+        canvas { display: block; width: 100%; height: 100%; }
+        h1, h2, h3 { color: #f3e5ab; text-align: center; text-shadow: 0 0 10px rgba(212, 175, 55, 0.5); margin: 5px 0; }
+        button { background: linear-gradient(to bottom, #2c3e50, #000); color: #f3e5ab; border: 1px solid #d4af37; padding: 10px; cursor: pointer; font-weight: bold; border-radius: 4px; transition: 0.2s; margin: 5px 0; }
+        button:hover { background: linear-gradient(to bottom, #34495e, #111); box-shadow: 0 0 8px #d4af37; }
+        input, select { background: #1a1a1a; color: #fff; border: 1px solid #444; padding: 8px; margin: 5px 0; border-radius: 4px; width: 100%; box-sizing: border-box; }
+        .panel { background: rgba(0,0,0,0.6); border: 1px solid #333; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
+        .stat-row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; }
+        .chat-box { height: 100px; background: rgba(0,0,0,0.8); border: 1px solid #222; border-radius: 4px; padding: 5px; overflow-y: auto; font-size: 12px; color: #aaa; margin-top: 5px; }
+        .chat-msg { margin: 2px 0; }
+        #gm-panel { position: fixed; top: 20px; right: 20px; width: 280px; background: rgba(20, 0, 0, 0.9); border: 2px solid #ff3333; padding: 15px; border-radius: 8px; z-index: 100; display: none; box-shadow: 0 0 20px rgba(255,0,0,0.5); }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- PANEL LATERAL -->
+    <div id="sidebar">
+        <div>
+          <h2>MU TITANES</h2>
+          <div style="font-size: 11px; text-align: center; color: #aaa; margin-bottom: 10px; font-style: italic;">¿Estás preparado para la batalla?</div>
+
+          <div id="auth-section" class="panel">
+              <h3>Acceso a Cuenta</h3>
+              <input type="text" id="username" placeholder="Usuario (Tu Admin: Nahu)">
+              <input type="password" id="password" placeholder="Contraseña">
+              <button onclick="loginAccount()">Ingresar / Registrar</button>
+          </div>
+
+          <div id="char-select-section" class="panel" style="display:none;">
+              <h3>Selección de Personaje</h3>
+              <select id="char-list"></select>
+              <button onclick="selectCharacter()">Entrar al Mundo</button>
+              <button onclick="openCreateCharModal()" style="background:#521;">Crear Personaje</button>
+          </div>
+
+          <div id="game-hud" class="panel" style="display:none;">
+              <h3><span id="hud-name">Héroe</span> (<span id="hud-class">Blade Master</span>)</h3>
+              <div class="stat-row"><span>Nivel:</span> <span id="hud-lvl">1</span></div>
+              <div class="stat-row"><span>Reset:</span> <span id="hud-reset">0</span></div>
+              <div class="stat-row"><span>Zen:</span> <span id="hud-zen">1000</span> Zen</div>
+              <div class="stat-row"><span>HP / SD:</span> <span id="hud-hp">100</span> / <span id="hud-sd">50</span></div>
+              
+              <div style="margin-top:10px; display:flex; gap:5px;">
+                  <button onclick="openMapModal()" style="flex:1;">Mover (M)</button>
+                  <button onclick="doReset()" style="flex:1; background:#412;">/reset</button>
+              </div>
+          </div>
+        </div>
+
+        <div>
+          <h3>Chat del Servidor</h3>
+          <div class="chat-box" id="chat-box">
+              <div class="chat-msg" style="color:#d4af37;">[Mu Titanes] ¡Bienvenido al servidor!</div>
+          </div>
+        </div>
+    </div>
+
+    <!-- ZONA DE JUEGO -->
+    <div id="viewport">
+        <canvas id="renderCanvas"></canvas>
+    </div>
+</div>
+
+<!-- PANEL DE ADMINISTRADOR EXCLUSIVO (GM) -->
+<div id="gm-panel">
+    <h3 style="color:#ff4444; margin-top:0;">🛡️ PANEL GM: MU TITANES</h3>
+    <div style="font-size:12px; margin-bottom:8px; color:#ffaaaa;">Modo Administrador Activo</div>
+    
+    <label style="font-size:12px;">Objetivo:</label>
+    <input type="text" id="gm-target-user" placeholder="Nombre de usuario">
+    
+    <label style="font-size:12px;">Ajustar Nivel:</label>
+    <input type="number" id="gm-set-lvl" value="400">
+    <button onclick="gmEditLevel()" style="background:#600; width:100%;">⚡ Aplicar Nivel</button>
+
+    <label style="font-size:12px; margin-top:5px; display:block;">Otorgar Zen:</label>
+    <input type="number" id="gm-set-zen" value="1000000000">
+    <button onclick="gmEditZen()" style="background:#600; width:100%;">💰 Dar Zen Máximo</button>
+
+    <button onclick="gmSpawnItem()" style="background:#800; width:100%; margin-top:8px;">🎁 Crear Alas Evo 3 / Set S4</button>
+</div>
+
+<!-- MODAL CREAR PJ -->
+<div id="create-modal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#1a1a1a; border:2px solid #d4af37; padding:20px; z-index:100; border-radius:8px; text-align:center;">
+    <h3>Crear Nuevo Personaje</h3>
+    <input type="text" id="new-char-name" placeholder="Nombre del Héroe">
+    <select id="new-char-class">
+        <option value="Blade Master">Blade Master (Dark Knight)</option>
+        <option value="Grand Master">Grand Master (Dark Wizard)</option>
+        <option value="High Elf">High Elf (Fairy Elf)</option>
+        <option value="Duel Master">Duel Master (Magic Gladiator)</option>
+        <option value="Lord Emperor">Lord Emperor (Dark Lord)</option>
+        <option value="Dimension Master">Dimension Master (
+        
